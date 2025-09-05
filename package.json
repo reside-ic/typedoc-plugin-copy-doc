@@ -1,5 +1,5 @@
 {
-  "name": "typedoc-plugin-copy-doc",
+  "name": "@reside-ic/typedoc-plugin-copy-doc",
   "type": "module",
   "version": "1.0.0",
   "license": "MIT",
