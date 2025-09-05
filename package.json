@@ -18,7 +18,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/m-kusumgar/typedoc-plugin-copy-doc.git"
+    "url": "git+https://github.com/reside-ic/typedoc-plugin-copy-doc.git"
   },
   "main": "dist/index.js",
   "files": [
