@@ -1,11 +1,11 @@
 # TypeDoc Copy Doc Plugin
 
 This plugin will allow you to reuse documentation between class and function declarations. It will automatically match parameters
-and type parameters and copy and paste their descriptions over. Also it will fill in a summary if none is specified on the target
-reflection of the `@copyDoc` tag.
+and type parameters and copy and paste their descriptions over. Also it will fill in a summary from the **first** `@copyDoc` tag
+source it finds if none is specified on the target reflection of the tag.
 
 This plugin was born out of this [discussion](https://github.com/TypeStrong/typedoc/discussions/3008#discussioncomment-14298716)
-where I wanted to do partial inheritance of documentation between classes that have the same `@typeParam`s.
+where I wanted to do partial inheritance of documentation between classes that have the same `@typeParam`.
 
 Credit to [Gerrit0](https://github.com/Gerrit0) who suggested the name and the [typedoc](https://github.com/TypeStrong/typedoc)
 contributors who developed the `InheritDocPlugin` that this plugin is heavily based on.
