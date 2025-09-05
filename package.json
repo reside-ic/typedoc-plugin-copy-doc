@@ -1,0 +1,30 @@
+{
+  "name": "typedoc-plugin-copy-doc",
+  "type": "module",
+  "version": "1.0.0",
+  "license": "MIT",
+  "description": "Plugin for Typedoc that copies relevant documentation",
+  "author": {
+    "name": "Mantra Kusumgar",
+    "url": "https://github.com/m-kusumgar"
+  },
+  "devDependencies": {
+    "rimraf": "^6.0.1",
+    "typedoc": "^0.28.12",
+    "typescript": "^5.9.2"
+  },
+  "peerDependencies": {
+    "typedoc": "0.26.x || 0.27.x || 0.28.x"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/m-kusumgar/typedoc-plugin-copy-doc.git"
+  },
+  "main": "dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "rimraf dist && tsc"
+  }
+}
