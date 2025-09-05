@@ -13,7 +13,7 @@ contributors who developed the `InheritDocPlugin` that this plugin is heavily ba
 ## Installation
 
 ```bash
-npm i --save-dev typedoc-plugin-copy-doc
+npm i --save-dev @reside-ic/typedoc-plugin-copy-doc
 ```
 and add to TypeDoc config
 
