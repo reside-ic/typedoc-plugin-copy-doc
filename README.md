@@ -23,6 +23,9 @@ and add to TypeDoc config
 
 ## Examples
 
+Note, in all these examples, the parameter or type parameter name must match exactly between the source of the
+documentation and the target, otherwise this will not work.
+
 ### Simple example with classes
 
 Before (duplicate documentation):
@@ -241,5 +244,102 @@ export const funmerge = <T, W>(
 }; 
 ```
 
-Note, in all these examples, the parameter or type parameter name must match exactly between the source of the
-documentation and the target, otherwise this will not work.
+### Member functions of class example
+
+You can also copy documentation for member functions of classes from classes or member functions
+themselves.
+
+Before:
+
+```ts
+/**
+ * Summary 1
+ *
+ * @typeParam A foo type generic 1
+ * @typeParam B foo type generic 2
+ */
+export class Foo<A, B> {
+  constructor() {};
+
+  /**
+   * fooFunction summary
+   *
+   * @param x first arg of fooFunction
+   * @param y second arg of fooFunction
+   */
+  fooFunction(x: A, y: B): A & B {
+    return {...x, ...y};
+  };
+}
+
+/**
+ * Summary 2
+ *
+ * @typeParam C bar type generic 1
+ * @typeParam D bar type generic 2
+ */
+export class Bar<C, D> {
+  constructor(public bar: C & D) {}
+
+  /**
+   * barFunction summary
+   *
+   * @typeParam A foo type generic 1
+   * @typeParam B foo type generic 2
+   * @param x first arg of fooFunction
+   * @param y second arg of fooFunction
+   */
+  barFunction<A, B>(x: A, y: B): A & B {
+    const foo = new Foo<A, B>();
+    return foo.fooFunction(x, y);
+  };
+}
+```
+
+After:
+
+```ts
+/**
+ * Summary 1
+ *
+ * @typeParam A foo type generic 1
+ * @typeParam B foo type generic 2
+ */
+export class Foo<A, B> {
+  constructor() {};
+
+  /**
+   * fooFunction summary
+   *
+   * @param x first arg of fooFunction
+   * @param y second arg of fooFunction
+   */
+  fooFunction(x: A, y: B): A & B {
+    return {...x, ...y};
+  };
+}
+
+/**
+ * Summary 2
+ *
+ * @typeParam C bar type generic 1
+ * @typeParam D bar type generic 2
+ */
+export class Bar<C, D> {
+  constructor(public bar: C & D) {}
+
+  /**
+   * barFunction summary
+   *
+   * @copyDoc Foo
+   * @copyDoc Foo.fooFunction
+   */
+  barFunction<A, B>(x: A, y: B): A & B {
+    const foo = new Foo<A, B>();
+    return foo.fooFunction(x, y);
+  };
+}
+```
+
+Here the documentation for the type parameters comes from `Foo` and documentation for the function
+parameters comes from `Foo.fooFunction`. Please note only the `.` delimiter works right now.

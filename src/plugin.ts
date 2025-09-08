@@ -1,11 +1,24 @@
-import { Application, Comment, Context, Converter, DeclarationReflection, ProjectReflection, Reflection, SignatureReflection } from "typedoc";
-import { circularInheritanceMsg, failedToFindMsg, failedToParseEmptyMsg, triedToCopyEmptyCommentMsg } from "./warnings.js";
+import { Application, Comment, Context, Converter, DeclarationReflection, ProjectReflection, SignatureReflection } from "typedoc";
+import { circularInheritanceMsg, failedToFindMsg, failedToParseEmptyMsg } from "./warnings.js";
 import { DefaultMap } from "./fromTypeDoc.js";
 
 type DeclarationOrSignatureRefl = DeclarationReflection | SignatureReflection
 
+type ReflectionConfig = {
+  reflection: DeclarationReflection,
+  type: "declaration",
+  name: string
+} | {
+  reflection: SignatureReflection,
+  type: "signature",
+  name: string
+}
+
 export class Plugin {
-  private dependencies = new DefaultMap<DeclarationOrSignatureRefl, DeclarationReflection[]>(() => []);
+  private dependencies = new DefaultMap<
+    ReflectionConfig,
+    ReflectionConfig[]
+  >(() => []);
 
   constructor(public app: Readonly<Application>) {
     // add copyDoc block tag
@@ -31,24 +44,58 @@ export class Plugin {
     const allReflections = this.getAllReflections(project);
 
     for (const id in project.reflections) {
-      const reflection = project.reflections[id];
-      if (!reflection) continue;
+      const rawReflection = project.reflections[id];
+      if (!rawReflection) continue;
 
-      // only supporting declarations for now
-      if (reflection.variant !== "declaration") continue;
-      const declReflection = reflection as DeclarationReflection;
+      if (rawReflection.variant !== "declaration" && rawReflection.variant !== "signature") continue;
+      const reflection = rawReflection as DeclarationOrSignatureRefl;
 
-      const sources = this.extractCopyDocTagReferences(declReflection);
+      if (reflection.variant === "signature") {
+        var reflectionCfg: ReflectionConfig = {
+          reflection: reflection,
+          type: "signature" as const,
+          name: reflection.getFriendlyFullName()
+        }
+      } else if (reflection.variant === "declaration") {
+        var reflectionCfg: ReflectionConfig = {
+          reflection: reflection,
+          type: "declaration" as const,
+          name: reflection.getFriendlyFullName()
+        }
+      } else {
+        continue;
+      }
+      
+      const sources = this.extractCopyDocTagReferences(reflectionCfg);
+
       sources?.forEach(source => {
-        const sourceReflection = allReflections.find(r => r.name === source);
+        if (reflectionCfg.type === "signature") {
+          var sourceReflection: DeclarationOrSignatureRefl | undefined =
+            allReflections.signatures.find(r => r.getFriendlyFullName() === source);
+          if (!sourceReflection) {
+            sourceReflection = allReflections.declarations.find(r => r.getFriendlyFullName() === source);
+          }
+        } else {
+          var sourceReflection: DeclarationOrSignatureRefl | undefined =
+            allReflections.declarations.find(r => r.getFriendlyFullName() === source);
+          if (!sourceReflection) {
+            sourceReflection = allReflections.signatures.find(r => r.getFriendlyFullName() === source);
+          }
+        }
 
         if (!sourceReflection) {
-          const warning = failedToFindMsg(source, declReflection.getFriendlyFullName());
+          const warning = failedToFindMsg(source, reflectionCfg.name);
           this.app.logger.warn(warning);
           return;
         }
 
-        this.mergeDocs(sourceReflection, declReflection);
+        const sourceReflectionCfg = {
+          reflection: sourceReflection,
+          type: sourceReflection.variant,
+          name: sourceReflection.getFriendlyFullName()
+        };
+
+        this.mergeDocs(sourceReflectionCfg as ReflectionConfig, reflectionCfg);
       });
     }
 
@@ -60,16 +107,18 @@ export class Plugin {
   private createCircularDependencyWarnings() {
     const unwarned = new Set(this.dependencies.keys());
 
-    const generateWarning = (orig: DeclarationOrSignatureRefl) => {
+    const generateWarning = (orig: ReflectionConfig) => {
       const parts = [orig.name];
       unwarned.delete(orig);
       let work = orig;
 
       do {
-        work = this.dependencies.get(work)[0]!;
+        const tmpWork = this.dependencies.getNoInsert(work);
+        if (!tmpWork) break;
+        work = tmpWork[0]!;
         unwarned.delete(work);
         parts.push(work.name);
-      } while (!this.dependencies.get(work).includes(orig as any));
+      } while (!this.dependencies.getNoInsert(work)?.includes(orig));
       parts.push(orig.name);
 
       const warning = circularInheritanceMsg(parts.reverse().join(" -> "));
@@ -83,45 +132,41 @@ export class Plugin {
     }
   };
 
-  private mergeDocs = (source: DeclarationOrSignatureRefl, target: DeclarationOrSignatureRefl) => {
-    if (!target.comment) return;
-
-    if (!source.comment) {
-      const warning = triedToCopyEmptyCommentMsg(target.getFriendlyFullName(), source.getFriendlyFullName());
-      this.app.logger.warn(warning);
+  private mergeDocs = (sourceReflectionCfg: ReflectionConfig, targetReflectionCfg: ReflectionConfig) => {
+    // if source reflection also has @copyDoc add it to dependency set to resolve later
+    if (this.extractCopyDocTagReferences(sourceReflectionCfg)) {
+      this.dependencies.get(sourceReflectionCfg).push(targetReflectionCfg);
       return;
     }
 
-    if (this.extractCopyDocTagReferences(source)) {
-      this.dependencies.get(source).push(target as DeclarationReflection);
-      return;
-    }
+    const { reflection: targetReflection, type: targetType } = targetReflectionCfg;
+    const { reflection: sourceReflection, type: sourceType } = sourceReflectionCfg;
 
-    target.comment.removeTags("@copyDoc");
+    const comment = targetReflection.comment;
+    const sourceComment = sourceReflection.comment;
+    if (!comment) return;
+
+    comment.removeTags("@copyDoc");
 
     // if no target summary use source summary
-    if (!target.comment.summary.length) {
-      target.comment.summary = Comment.cloneDisplayParts(source.comment.summary);
+    if (!comment.summary.length && sourceComment?.summary) {
+      comment.summary = Comment.cloneDisplayParts(sourceComment.summary);
     }
 
-    if ("typeParameters" in target && "typeParameters" in source) {
-      this.matchAndCopyTypeParameterComments(source, target);
+    if ("typeParameters" in targetReflection && "typeParameters" in sourceReflection) {
+      this.matchAndCopyTypeParameterComments(sourceReflection, targetReflection);
     }
 
-    if ("signatures" in target && target.signatures && "signatures" in source && source.signatures) {
-      target.signatures.forEach(targetSig => {
-        source.signatures?.forEach(sourceSig => {
-          this.matchAndCopyParameterComments(sourceSig, targetSig);
-          this.matchAndCopyTypeParameterComments(sourceSig, targetSig);
-        });
-      });
+    if (targetType === "signature" && sourceType === "signature") {
+        this.matchAndCopyParameterComments(sourceReflection, targetReflection);
+        this.matchAndCopyTypeParameterComments(sourceReflection, targetReflection);
     }
 
     // Now copy the comment for anyone who depends on me.
-    const dependent = this.dependencies.get(target);
-    this.dependencies.delete(target);
-    for (const target2 of dependent) {
-      this.mergeDocs(target, target2);
+    const dependent = this.dependencies.get(targetReflectionCfg);
+    this.dependencies.delete(targetReflectionCfg);
+    for (const targetReflectionCfg2 of dependent) {
+      this.mergeDocs(targetReflectionCfg, targetReflectionCfg2);
     }
   };
 
@@ -152,7 +197,8 @@ export class Plugin {
   };
 
   // extract all copyDoc tags, there may be multiple
-  private extractCopyDocTagReferences = (reflection: Reflection) => {
+  private extractCopyDocTagReferences = (reflectionCfg: ReflectionConfig) => {
+    const { reflection, name } = reflectionCfg;
     const comment = reflection.comment;
     if (!comment) return;
 
@@ -164,7 +210,7 @@ export class Plugin {
       const content = blockTags[i]?.content[0];
       
       if (!content) {
-        const warning = failedToParseEmptyMsg(reflection.getFriendlyFullName());
+        const warning = failedToParseEmptyMsg(name);
         this.app.logger.warn(warning);
       } else {
         references.push(content.text);
@@ -176,18 +222,22 @@ export class Plugin {
 
   // recurse down tree from project reflection to get all declaration reflections
   private getAllReflections = (baseReflection: ProjectReflection | DeclarationOrSignatureRefl) => {
-    let subReflections: DeclarationOrSignatureRefl[] = [];
+    let subDeclReflections: DeclarationReflection[] = [];
+    let subSigReflections: SignatureReflection[] = [];
+
     if ("children" in baseReflection) {
-      subReflections = [...subReflections, ...baseReflection.children ?? []];
+      subDeclReflections = [...subDeclReflections, ...baseReflection.children ?? []];
     }
     if ("signatures" in baseReflection) {
-      subReflections = [...subReflections, ...baseReflection.signatures ?? []];
+      subSigReflections = [...subSigReflections, ...baseReflection.signatures ?? []];
     }
 
-    const allReflections = [...subReflections];
+    const allReflections = { declarations: subDeclReflections, signatures: subSigReflections };
 
-    subReflections.forEach(r => {
-      allReflections.push(...this.getAllReflections(r));
+    allReflections.declarations.forEach(r => {
+      const { declarations, signatures } = this.getAllReflections(r);
+      allReflections.declarations.push(...declarations);
+      allReflections.signatures.push(...signatures);
     });
     
     return allReflections;
